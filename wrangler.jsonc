@@ -7,7 +7,7 @@
   "name": "large-video-uploader",
 
   // Entry point (compiled output or TypeScript source)
-  "main": "src/worker.ts",
+  "main": "src/index.ts",
 
   // Cloudflare Worker compatibility date
   "compatibility_date": "2025-10-01",
