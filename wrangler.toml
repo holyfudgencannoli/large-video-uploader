@@ -1,0 +1,14 @@
+name = "r2-multipart-worker"
+main = "src/worker.ts"
+compatibility_date = "2024-10-01"
+
+[vars]
+ACCOUNT_ID = "your-cloudflare-account-id"
+
+[env.production]
+vars = { ACCOUNT_ID = "your-prod-account-id" }
+
+[secrets]
+# R2_ACCESS_KEY_ID
+# R2_SECRET_ACCESS_KEY
+
