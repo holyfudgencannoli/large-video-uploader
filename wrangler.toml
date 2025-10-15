@@ -1,12 +1,12 @@
-name = "r2-multipart-worker"
+name = "large-video-uploader"
 main = "src/worker.ts"
 compatibility_date = "2024-10-01"
 
 [vars]
-ACCOUNT_ID = "your-cloudflare-account-id"
+ACCOUNT_ID = "d9bfc18ff0adcec738cf58c0fbf3432a"
 
 [env.production]
-vars = { ACCOUNT_ID = "your-prod-account-id" }
+vars = { ACCOUNT_ID = "d9bfc18ff0adcec738cf58c0fbf3432a" }
 
 [secrets]
 # R2_ACCESS_KEY_ID

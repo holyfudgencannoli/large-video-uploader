@@ -15,14 +15,14 @@
   // Environment variables available to the Worker
   "vars": {
     // Cloudflare account ID (not secret)
-    "ACCOUNT_ID": "your-cloudflare-account-d9bfc18ff0adcec738cf58c0fbf3432a"
+    "ACCOUNT_ID": "d9bfc18ff0adcec738cf58c0fbf3432a"
   },
 
   // Environment-specific overrides
   "env": {
     "production": {
       "vars": {
-        "ACCOUNT_ID": "your-prod-account-id"
+        "ACCOUNT_ID": "d9bfc18ff0adcec738cf58c0fbf3432a"
       }
     }
   },
