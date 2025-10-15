@@ -1,15 +1,3 @@
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Bind resources to your worker in `wrangler.jsonc`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
 import {
   S3Client,
   CreateMultipartUploadCommand,
@@ -32,9 +20,29 @@ interface CompleteUploadRequest {
   parts: { etag: string; partNumber: number }[];
 }
 
+// Helper: add CORS headers to a Response
+function withCors(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Access-Control-Allow-Origin", "*"); // replace * with your Pages domain for security
+  headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type");
+  return new Response(response.body, { ...response, headers });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    // 🛡 Handle preflight CORS requests
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*", // or your domain
+          "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        },
+      });
+    }
 
     // ✅ Initialize S3 client for Cloudflare R2
     const s3 = new S3Client({
@@ -46,74 +54,90 @@ export default {
       },
     });
 
-    // 🧩 Step 1: Initiate multipart upload
-    if (url.pathname === "/initiate") {
-      const key = `uploads/${crypto.randomUUID()}.mp4`;
-      const command = new CreateMultipartUploadCommand({
-        Bucket: "videos",
-        Key: key,
-      });
+    try {
+      // 🧩 Step 1: Initiate multipart upload
+      if (url.pathname === "/initiate") {
+        const key = `uploads/${crypto.randomUUID()}.mp4`;
+        const command = new CreateMultipartUploadCommand({
+          Bucket: "videos",
+          Key: key,
+        });
 
-      const res = await s3.send(command);
+        const res = await s3.send(command);
 
-      return new Response(
-        JSON.stringify({ uploadId: res.UploadId, key }),
-        { headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // 🧩 Step 2: Get signed URL for part upload
-    if (url.pathname === "/sign-part") {
-      const key = url.searchParams.get("key");
-      const uploadId = url.searchParams.get("uploadId");
-      const partNumber = Number(url.searchParams.get("partNumber"));
-
-      if (!key || !uploadId || !partNumber) {
-        return new Response("Missing parameters", { status: 400 });
+        return withCors(
+          new Response(JSON.stringify({ uploadId: res.UploadId, key }), {
+            headers: { "Content-Type": "application/json" },
+          })
+        );
       }
 
-      const command = new UploadPartCommand({
-        Bucket: "videos",
-        Key: key,
-        PartNumber: partNumber,
-        UploadId: uploadId,
-      });
+      // 🧩 Step 2: Get signed URL for part upload
+      if (url.pathname === "/sign-part") {
+        const key = url.searchParams.get("key");
+        const uploadId = url.searchParams.get("uploadId");
+        const partNumber = Number(url.searchParams.get("partNumber"));
 
-      const signedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
+        if (!key || !uploadId || !partNumber) {
+          return withCors(new Response("Missing parameters", { status: 400 }));
+        }
 
-      return new Response(JSON.stringify({ signedUrl }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+        const command = new UploadPartCommand({
+          Bucket: "videos",
+          Key: key,
+          PartNumber: partNumber,
+          UploadId: uploadId,
+        });
 
-    // 🧩 Step 3: Complete multipart upload
-    if (url.pathname === "/complete") {
-      const body = (await request.json()) as CompleteUploadRequest;
+        const signedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
 
-      if (!body.key || !body.uploadId || !body.parts?.length) {
-        return new Response("Invalid request body", { status: 400 });
+        return withCors(
+          new Response(JSON.stringify({ signedUrl }), {
+            headers: { "Content-Type": "application/json" },
+          })
+        );
       }
 
-      const command = new CompleteMultipartUploadCommand({
-        Bucket: "videos",
-        Key: body.key,
-        UploadId: body.uploadId,
-        MultipartUpload: {
-          Parts: body.parts.map((p) => ({
-            ETag: p.etag,
-            PartNumber: p.partNumber,
-          })),
-        },
-      });
+      // 🧩 Step 3: Complete multipart upload
+      if (url.pathname === "/complete") {
+        const body = (await request.json()) as CompleteUploadRequest;
 
-      const result = await s3.send(command);
+        if (!body.key || !body.uploadId || !body.parts?.length) {
+          return withCors(
+            new Response("Invalid request body", { status: 400 })
+          );
+        }
 
-      return new Response(
-        JSON.stringify({ location: result.Location }),
-        { headers: { "Content-Type": "application/json" } }
+        const command = new CompleteMultipartUploadCommand({
+          Bucket: "videos",
+          Key: body.key,
+          UploadId: body.uploadId,
+          MultipartUpload: {
+            Parts: body.parts.map((p) => ({
+              ETag: p.etag,
+              PartNumber: p.partNumber,
+            })),
+          },
+        });
+
+        const result = await s3.send(command);
+
+        return withCors(
+          new Response(
+            JSON.stringify({ location: result.Location }),
+            { headers: { "Content-Type": "application/json" } }
+          )
+        );
+      }
+
+      return withCors(new Response("Not found", { status: 404 }));
+    } catch (err: any) {
+      return withCors(
+        new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        })
       );
     }
-
-    return new Response("Not found", { status: 404 });
   },
 };
